@@ -24,6 +24,6 @@ if __name__ == '__main__':
     sync_manager = SyncManager(shelve_path=shelve_path, otl_db_path=otl_db_path, eminfra_importer=eminfra_importer,
                                resource_main_dir=Path('/home/davidlinux/Documents/AWV/jsonld'))
     sync_manager.download_resource('assetrelaties')
-    sync_manager.combine_jsons('assetrelaties')
+    sync_manager.combine_jsons('assetrelaties', combine_max=7000)
 
 
