@@ -70,25 +70,66 @@ class SyncManager:
         resource_directory = self.resource_main_dir / resource_name
 
         all_files = [x for x in resource_directory.iterdir() if x.is_file()]
-        first_file = all_files[0]
-        with open(first_file, 'r') as f:
-            first_file = f.read()
-        first_file = json.loads(first_file)
+        first_file_path = all_files[0]
+        with open(first_file_path, 'r') as f:
+            first_file_lines = f.read()
+        file_content = json.loads(first_file_lines)
 
-        for index, other_file in enumerate(all_files[1:]):
+        for index, extra_file_path in enumerate(all_files[1:]):
             if combine_max != -1 and index % combine_max == 0 and index != 0:
-                with open(Path(resource_directory / f'combined_{index}.jsonld'), 'w') as f:
-                    f.write(json.dumps(first_file))
+                self.write_to_file(file_content,  f'combined_{index}.jsonld', resource_directory)
 
-                with open(other_file, 'r') as f:
-                    first_file = f.read()
-                first_file = json.loads(first_file)
+                with open(extra_file_path, 'r') as f:
+                    first_file_lines = f.read()
+                file_content = json.loads(first_file_lines)
                 continue
 
-            with open(other_file, 'r') as f:
-                file2 = f.read()
-            file2 = json.loads(file2)
-            first_file['@graph'].extend(file2['@graph'])
+            with open(extra_file_path, 'r') as f:
+                extra_file_lines = f.read()
+            extra_file_content = json.loads(extra_file_lines)
+            file_content['@graph'].extend(extra_file_content['@graph'])
 
-        with open(Path(resource_directory / f'combined_last.jsonld'), 'w') as f:
-            f.write(json.dumps(first_file))
+        self.write_to_file(file_content, f'combined_last.jsonld', resource_directory)
+
+    @staticmethod
+    def write_to_file(dict_list, filename, resource_directory):
+        dict_list = SyncManager.optimize_dict_list(dict_list)
+        with open(Path(resource_directory / filename), 'w') as f:
+            f.write(json.dumps(dict_list))
+
+    @classmethod
+    def optimize_dict_list(cls, dict_list):
+        extra_nodes = {}
+        for node in dict_list['@graph']:
+            toezichter = node.get('tz:Toezicht.toezichter', None)
+            if toezichter is not None:
+                toezichter_uri = 'https://wegenenverkeer.data.vlaanderen.be/oef/toezicht/toezichter/' + \
+                                 toezichter['tz:DtcToezichter.gebruikersnaam']
+                if toezichter_uri not in extra_nodes:
+                    extra_nodes[toezichter_uri] = toezichter
+                    toezichter['@id'] = toezichter_uri
+                node['tz:Toezicht.toezichter'] = {'@id': toezichter_uri}
+
+            toezichtgroep = node.get('tz:Toezicht.toezichtgroep', None)
+            if toezichtgroep is not None:
+                toezichtgroep_uri = 'https://wegenenverkeer.data.vlaanderen.be/oef/toezicht/toezichtgroep/' + \
+                                 toezichtgroep['tz:DtcToezichtGroep.referentie']
+                if toezichtgroep_uri not in extra_nodes:
+                    extra_nodes[toezichtgroep_uri] = toezichtgroep
+                    toezichtgroep['@id'] = toezichtgroep_uri
+                node['tz:Toezicht.toezichtgroep'] = {'@id': toezichtgroep_uri}
+
+            beheerder = node.get('tz:Schadebeheerder.schadebeheerder', None)
+            if beheerder is not None:
+                beheerder_uri = 'https://wegenenverkeer.data.vlaanderen.be/oef/toezicht/schadebeheerder/' + \
+                                 beheerder['tz:DtcBeheerder.referentie']
+                if beheerder_uri not in extra_nodes:
+                    extra_nodes[beheerder_uri] = beheerder
+                    beheerder['@id'] = beheerder_uri
+                node['tz:Schadebeheerder.schadebeheerder'] = {'@id': beheerder_uri}
+
+        dict_list['@graph'].extend(extra_nodes.values())
+        return dict_list
+
+
+
