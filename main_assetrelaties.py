@@ -22,8 +22,8 @@ if __name__ == '__main__':
     otl_db_path = Path(this_directory / 'OTL 2.7.db')
 
     sync_manager = SyncManager(shelve_path=shelve_path, otl_db_path=otl_db_path, eminfra_importer=eminfra_importer,
-                               resource_main_dir=Path('/home/davidlinux/Documents/AWV/jsonld'))
-    sync_manager.download_resource('assetrelaties')
-    sync_manager.combine_jsons('assetrelaties', combine_max=7000)
+                               resource_main_dir=Path('/home/davidlinux/Documents/AWV/jsonld/20230508'))
+    #sync_manager.download_resource('assetrelaties')
+    sync_manager.combine_jsons('assetrelaties', combine_max=300)
 
 

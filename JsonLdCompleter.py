@@ -1,4 +1,5 @@
 import json
+import logging
 import sqlite3
 from pathlib import Path
 
@@ -8,7 +9,7 @@ class JsonLdCompleter:
         self.valid_uris = self.get_otl_uris_from_db(otl_db_path)
 
     def transform_json_ld(self, asset_dict):
-        new_list = [self.add_exact_geometry(self.fix_dict(asset)) for asset in asset_dict]
+        new_list = [self.fix_dict(asset) for asset in asset_dict]
         graph_dict = {'@graph': new_list, '@context': {
                 'rdf': 'http://www.w3.org/1999/02/22-rdf-syntax-ns#',
                 'asset': 'https://data.awvvlaanderen.be/id/asset/',
@@ -81,38 +82,3 @@ UNION SELECT uri FROM OSLODatatypeUnionAttributen""")
 
         con.close()
         return d
-
-    @staticmethod
-    def add_exact_geometry(new_dict):
-        if 'geo:Geometrie.log' in new_dict:
-            return new_dict
-
-        if 'loc:Locatie.puntlocatie' in new_dict and 'loc:3Dpunt.puntgeometrie' in new_dict['loc:Locatie.puntlocatie']:
-            if 'loc:DtcCoord.lambert72' not in new_dict['loc:Locatie.puntlocatie']['loc:3Dpunt.puntgeometrie']:
-                return new_dict
-            coords = new_dict['loc:Locatie.puntlocatie']['loc:3Dpunt.puntgeometrie']['loc:DtcCoord.lambert72']
-            x = coords['loc:DtcCoordLambert72.xcoordinaat']
-            y = coords['loc:DtcCoordLambert72.ycoordinaat']
-            z = coords['loc:DtcCoordLambert72.zcoordinaat']
-
-            if x == '' or x is None or x == 0 or x == 0:
-                raise ValueError(new_dict)
-
-            new_dict['http://example.org/ApplicationSchema#hasExactGeometry'] = {
-                "@id" : new_dict['@id'] + '_geometry',
-                "@type": "http://www.opengis.net/ont/sf#Point",
-                "http://www.opengis.net/ont/geosparql#asWKT": {
-                        "@value": f"<http://www.opengis.net/def/crs/EPSG/9.9.1/31370> Point({x} {y})",
-                        "@type": "http://www.opengis.net/ont/geosparql#wktLiteral"
-                    }}
-        else:
-            return new_dict
-            new_dict['http://example.org/ApplicationSchema#hasExactGeometry'] = {
-                "@id": new_dict['@id'] + '_geometry',
-                "@type": "http://www.opengis.net/ont/sf#Point",
-                "http://www.opengis.net/ont/geosparql#asWKT": {
-                    "@value": f"<http://www.opengis.net/def/crs/EPSG/9.9.1/31370> Point(NaN NaN NaN)",
-                    "@type": "http://www.opengis.net/ont/geosparql#wktLiteral"
-                }}
-
-        return new_dict

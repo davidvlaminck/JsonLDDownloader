@@ -1,4 +1,5 @@
 import json
+import logging
 import shelve
 from pathlib import Path
 
@@ -77,7 +78,7 @@ class SyncManager:
 
         for index, extra_file_path in enumerate(all_files[1:]):
             if combine_max != -1 and index % combine_max == 0 and index != 0:
-                self.write_to_file(file_content,  f'combined_{index}.jsonld', resource_directory)
+                self.write_to_file(file_content,  f'{resource_name}_combined_{index}.jsonld', resource_directory)
 
                 with open(extra_file_path, 'r') as f:
                     first_file_lines = f.read()
@@ -89,7 +90,7 @@ class SyncManager:
             extra_file_content = json.loads(extra_file_lines)
             file_content['@graph'].extend(extra_file_content['@graph'])
 
-        self.write_to_file(file_content, f'combined_last.jsonld', resource_directory)
+        self.write_to_file(file_content, f'{resource_name}_combined_last.jsonld', resource_directory)
 
     @staticmethod
     def write_to_file(dict_list, filename, resource_directory):
@@ -100,7 +101,10 @@ class SyncManager:
     @classmethod
     def optimize_dict_list(cls, dict_list):
         extra_nodes = {}
-        for node in dict_list['@graph']:
+        for index, node in enumerate(dict_list['@graph']):
+            node = SyncManager.add_exact_geometry(node)
+            dict_list['@graph'][index] = {'@id': node['@id'], '@graph': node}
+
             toezichter = node.get('tz:Toezicht.toezichter', None)
             if toezichter is not None:
                 toezichter_uri = 'https://wegenenverkeer.data.vlaanderen.be/oef/toezicht/toezichter/' + \
@@ -130,6 +134,71 @@ class SyncManager:
 
         dict_list['@graph'].extend(extra_nodes.values())
         return dict_list
+
+    @staticmethod
+    def add_exact_geometry(asset_dict):
+        if 'geo:Geometrie.log' in asset_dict:
+            if len(asset_dict['geo:Geometrie.log']) > 0:
+                first_log = asset_dict['geo:Geometrie.log'][0]
+                geom = first_log['geo:DtcLog.geometrie']
+                if len(geom.items()) > 0:
+                    wkt_str = next(iter(geom.values()))
+                    asset_dict['http://example.org/ApplicationSchema#hasExactGeometry'] = \
+                        SyncManager.get_exact_geometry_from_wkt_str(wkt_str, id=asset_dict['@id'])
+                return asset_dict
+
+        if 'loc:Locatie.geometrie' in asset_dict:
+            wkt_str = asset_dict['loc:Locatie.geometrie']
+            if wkt_str != '':
+                asset_dict['http://example.org/ApplicationSchema#hasExactGeometry'] = \
+                    SyncManager.get_exact_geometry_from_wkt_str(wkt_str, id=asset_dict['@id'])
+                return asset_dict
+
+        if 'loc:Locatie.puntlocatie' in asset_dict and 'loc:3Dpunt.puntgeometrie' in asset_dict['loc:Locatie.puntlocatie']:
+            if 'loc:DtcCoord.lambert72' not in asset_dict['loc:Locatie.puntlocatie']['loc:3Dpunt.puntgeometrie']:
+                return asset_dict
+            coords = asset_dict['loc:Locatie.puntlocatie']['loc:3Dpunt.puntgeometrie']['loc:DtcCoord.lambert72']
+            x = coords['loc:DtcCoordLambert72.xcoordinaat']
+            y = coords['loc:DtcCoordLambert72.ycoordinaat']
+            z = coords['loc:DtcCoordLambert72.zcoordinaat']
+
+            if x == '' or x is None or x == 0 or x == 0:
+                raise ValueError(asset_dict)
+
+            wkt_str = 'POINT Z ({} {} {})'.format(x, y, z)
+
+            asset_dict['http://example.org/ApplicationSchema#hasExactGeometry'] = \
+                SyncManager.get_exact_geometry_from_wkt_str(wkt_str, id=asset_dict['@id'])
+
+        return asset_dict
+
+    @staticmethod
+    def get_exact_geometry_from_wkt_str(wkt_str, id):
+        geom_type = None
+        if wkt_str.startswith('POINT'):
+            geom_type = 'http://www.opengis.net/ont/sf#Point'
+        elif wkt_str.startswith('MULTIPOINT'):
+            geom_type = 'http://www.opengis.net/ont/sf#MultiPoint'
+        elif wkt_str.startswith('POLYGON'):
+            geom_type = 'http://www.opengis.net/ont/sf#Polygon'
+        elif wkt_str.startswith('LINESTRING'):
+            geom_type = 'http://www.opengis.net/ont/sf#LineString'
+        elif wkt_str.startswith('MULTILINESTRING'):
+            geom_type = 'http://www.opengis.net/ont/sf#MultiLineString'
+        elif wkt_str.startswith('MULTIPOLYGON'):
+            geom_type = 'http://www.opengis.net/ont/sf#MultiPolygon'
+        elif wkt_str.startswith('GEOMETRYCOLLECTION'):
+            geom_type = 'http://www.opengis.net/ont/sf#GeometryCollection'
+        else:
+            logging.error(f'Unknown geometry type: {wkt_str}')
+        return {
+            "@id": id + '_geometry',
+            "@type": geom_type,
+            "http://www.opengis.net/ont/geosparql#asWKT": {
+                "@value": f"<http://www.opengis.net/def/crs/EPSG/9.9.1/31370> {wkt_str}",
+                "@type": "http://www.opengis.net/ont/geosparql#wktLiteral"
+            }}
+
 
 
 
